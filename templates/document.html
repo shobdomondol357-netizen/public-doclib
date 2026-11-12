@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"DigitalDocument","name":"{{ doc.title }}","fileFormat":"{{ doc.mime_type }}","contentSize":"{{ doc.size_bytes }}","dateModified":"{{ doc.updated_at }}"}
+</script>
+<article>
+<h1>{{ doc.title }}</h1>
+<p class="meta">Type: {{ doc.file_ext }} &middot; Size: {{ doc.size_bytes }} bytes &middot; Updated: {{ doc.updated_at }} &middot; Status: {{ doc.text_status }}</p>
+{% if doc.category %}<p>Category: {{ doc.category.name }}</p>{% endif %}
+{% if doc.tags %}<p>Tags: {{ doc.tags }}</p>{% endif %}
+{% if doc.author %}<p>Author: {{ doc.author }}</p>{% endif %}
+{% if doc.description %}<p>{{ doc.description }}</p>{% endif %}
+<p><a href="/api/v1/documents/{{ doc.id }}/download">Download original</a> &middot; <a href="/api/v1/documents/{{ doc.id }}/content">JSON content</a></p>
+<h2>Extracted text preview</h2>
+<pre class="textblock">{{ (doc.text_content or '')[:5000] }}</pre>
+</article>
+{% endblock %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Admin</h1>
+<p>Google Drive: {% if connected %}Connected{% else %}Not connected{% endif %}</p>
+<form method="post" action="/admin/logout"><button type="submit">Logout</button></form>
+
+<h2>Google Drive Settings</h2>
+<form method="post" action="/admin/settings">
+  <label>Folder ID</label><br>
+  <input type="text" name="folder_id" value="{{ folder }}" style="width:100%" />
+  <label>Excluded file IDs (comma separated)</label><br>
+  <textarea name="excluded_ids" style="width:100%">{{ excluded }}</textarea><br>
+  <button type="submit">Save</button>
+</form>
+<p>
+  <a href="/admin/google/connect">Connect Google Drive</a> &middot;
+  <form method="post" action="/admin/sync" style="display:inline"><button type="submit">Sync Now</button></form>
+</p>
+
+<h2>Sync Logs</h2>
+<ul>
+{% for l in logs %}
+  <li>{{ l.started_at }} - {{ l.status }} added={{ l.added }} updated={{ l.updated }} deleted={{ l.deleted }} {{ l.errors }}</li>
+{% endfor %}
+</ul>
+
+<h2>Documents ({{ docs|length }})</h2>
+<table>
+  <tr><th>Title</th><th>Type</th><th>Status</th><th>Public</th><th>Actions</th></tr>
+  {% for d in docs %}
+  <tr>
+    <td>{{ d.title }}</td>
+    <td>{{ d.file_ext }}</td>
+    <td>{{ d.text_status }}</td>
+    <td>{{ d.is_public }}</td>
+    <td>
+      <form method="post" action="/admin/documents/{{ d.id }}/toggle" style="display:inline"><button>Toggle</button></form>
+      <form method="post" action="/admin/documents/{{ d.id }}/delete" style="display:inline"><button>Delete</button></form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% endblock %}

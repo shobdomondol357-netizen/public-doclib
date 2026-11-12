@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>{{ site_name }}</h1>
+  <p>A public, AI-accessible document library. {{ total }} documents indexed.</p>
+  <form action="/documents" method="get" class="searchbar">
+    <input type="text" name="q" placeholder="Search documents..." />
+    <button type="submit">Search</button>
+  </form>
+</section>
+
+<h2>Categories</h2>
+<div class="grid">
+{% for c in categories %}
+  <a class="card" href="/documents?category={{ c.slug }}">
+    <h3>{{ c.name }}</h3>
+    <p>{{ c.description }}</p>
+  </a>
+{% endfor %}
+</div>
+
+<h2>Recently Added</h2>
+<div class="list">
+{% for d in recent %}
+  <a class="row" href="/documents/{{ d.id }}">
+    <strong>{{ d.title }}</strong>
+    <span class="meta">{{ d.file_ext }} &middot; {{ d.text_status }} &middot; {{ d.created_at }}</span>
+  </a>
+{% endfor %}
+</div>
+
+<h2>Popular</h2>
+<div class="list">
+{% for d in popular %}
+  <a class="row" href="/documents/{{ d.id }}">
+    <strong>{{ d.title }}</strong>
+    <span class="meta">{{ d.view_count }} views</span>
+  </a>
+{% endfor %}
+</div>
+{% endblock %}

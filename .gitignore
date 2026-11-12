@@ -1,0 +1,8 @@
+.env
+data/
+*.db
+.vercel/
+__pycache__/
+*.pyc
+.venv/
+node_modules/

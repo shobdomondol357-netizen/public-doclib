@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>AI Access</h1>
+<p>This library exposes documents via REST API, MCP, and crawlable pages.</p>
+<h2>REST API</h2>
+<ul>
+  <li><code>GET {{ site_url }}/api/v1/health</code></li>
+  <li><code>GET {{ site_url }}/api/v1/documents</code></li>
+  <li><code>GET {{ site_url }}/api/v1/documents/{id}</code></li>
+  <li><code>GET {{ site_url }}/api/v1/documents/{id}/content</code></li>
+  <li><code>GET {{ site_url }}/api/v1/documents/{id}/download</code></li>
+  <li><code>GET {{ site_url }}/api/v1/search?q=...</code></li>
+  <li><code>GET {{ site_url }}/api/v1/categories</code></li>
+</ul>
+<h2>MCP (streamable HTTP)</h2>
+<p>Endpoint: <code>{{ site_url }}/mcp</code></p>
+<p>Tools: search_documents, get_document_metadata, read_document, search_document_content, list_categories, get_document_sections.</p>
+<h2>OpenAPI</h2>
+<p><a href="{{ site_url }}/api/openapi.json">OpenAPI JSON</a> &middot; <a href="{{ site_url }}/api/docs">Swagger UI</a></p>
+<h2>Machine-readable</h2>
+<p><a href="{{ site_url }}/llms.txt">llms.txt</a> &middot; <a href="{{ site_url }}/sitemap.xml">sitemap.xml</a></p>
+{% endblock %}
