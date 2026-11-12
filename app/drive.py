@@ -56,8 +56,19 @@ def list_files_recursive(service, folder_id: str, exclude_ids: set) -> list:
                 break
     return results
 
-def download_file(service, file_id: str) -> bytes:
-    request = service.files().get_media(fileId=file_id)
+def download_file(service, file_id: str, mime: str = "") -> bytes:
+    # Google Workspace native files need export
+    if mime.startswith("application/vnd.google-apps"):
+        export_mime = "text/plain"
+        if "spreadsheet" in mime:
+            export_mime = "text/csv"
+        elif "presentation" in mime:
+            export_mime = "text/plain"
+        elif "document" in mime:
+            export_mime = "text/plain"
+        request = service.files().export_media(fileId=file_id, mimeType=export_mime)
+    else:
+        request = service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
     done = False

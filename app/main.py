@@ -395,12 +395,15 @@ def run_sync(db: Session) -> dict:
             existing = db.query(Document).filter(Document.drive_file_id==f["id"]).first()
             # download
             try:
-                data = download_file(svc, f["id"])
+                data = download_file(svc, f["id"], mime)
             except Exception as e:
                 # maybe google native doc; try export
                 errors.append(f"{f['name']}: download failed {e}")
                 continue
-            text, tstatus = extract_text(f["name"], data, mime)
+            extract_name = f["name"]
+            if mime.startswith("application/vnd.google-apps"):
+                extract_name = f["name"] + ".txt"
+            text, tstatus = extract_text(extract_name, data, mime)
             if len(text) > MAX_TEXT_CHARS:
                 text = text[:MAX_TEXT_CHARS]
             # category by folder? default general
@@ -409,7 +412,7 @@ def run_sync(db: Session) -> dict:
                 existing.title = f["name"]
                 existing.filename = f["name"]
                 existing.mime_type = mime
-                existing.file_ext = ext_of(f["name"])
+                existing.file_ext = ext_of(extract_name)
                 existing.size_bytes = int(f.get("size",0) or 0)
                 existing.drive_modified_time = f.get("modifiedTime")
                 existing.drive_web_view_link = f.get("webViewLink")
@@ -424,7 +427,7 @@ def run_sync(db: Session) -> dict:
                     title=f["name"],
                     filename=f["name"],
                     mime_type=mime,
-                    file_ext=ext_of(f["name"]),
+                    file_ext=ext_of(extract_name),
                     size_bytes=int(f.get("size",0) or 0),
                     category_id=cat.id if cat else None,
                     drive_modified_time=f.get("modifiedTime"),
