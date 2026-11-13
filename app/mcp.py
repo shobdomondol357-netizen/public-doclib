@@ -54,11 +54,11 @@ def call_tool(name, args):
             docs = keyword_search(s, q, limit)
             return [{"id":d.id,"title":d.title,"category":d.category.name if d.category else None,"text_status":d.text_status,"snippet":(d.text_content or "")[:300]} for d in docs]
         if name == "get_document_metadata":
-            d = s.query(Document).filter(Document.id==args["id"], Document.is_deleted==False).first()
+            d = s.query(Document).filter(Document.id==args["id"], Document.is_deleted==False, Document.is_public==True).first()
             if not d: raise ValueError("not found")
             return {"id":d.id,"title":d.title,"filename":d.filename,"mime_type":d.mime_type,"size_bytes":d.size_bytes,"category":d.category.name if d.category else None,"tags":d.tags,"author":d.author,"subject":d.subject,"text_status":d.text_status,"updated_at":str(d.updated_at)}
         if name == "read_document":
-            d = s.query(Document).filter(Document.id==args["id"], Document.is_deleted==False).first()
+            d = s.query(Document).filter(Document.id==args["id"], Document.is_deleted==False, Document.is_public==True).first()
             if not d: raise ValueError("not found")
             mc = int(args.get("max_chars",8000))
             txt = d.text_content or ""
@@ -81,7 +81,7 @@ def call_tool(name, args):
             cats = s.query(Category).all()
             return [{"id":c.id,"name":c.name,"slug":c.slug} for c in cats]
         if name == "get_document_sections":
-            d = s.query(Document).filter(Document.id==args["id"], Document.is_deleted==False).first()
+            d = s.query(Document).filter(Document.id==args["id"], Document.is_deleted==False, Document.is_public==True).first()
             if not d: raise ValueError("not found")
             txt = d.text_content or ""
             size = int(args.get("chunk_size",2000))

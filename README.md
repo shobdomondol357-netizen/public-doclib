@@ -51,7 +51,8 @@ See .env.example. Important: SECRET_KEY, ADMIN_PASSWORD, DATABASE_URL, GOOGLE_CL
 7. Database: free Postgres (Render/Neon) এর DATABASE_URL ব্যবহার করুন অথবা SQLite (ephemeral)।
 
 ## Automated sync
-Set up a free cron service (cron-job.org) to GET/POST `https://your-site.com/api/admin/sync?secret=YOUR_ADMIN_PASSWORD` daily.
+Set up a free cron service (cron-job.org) to POST to `https://your-site.com/api/admin/sync`
+with header `X-Sync-Secret: YOUR_SYNC_SECRET`. Do not put secrets in the URL.
 
 ## API
 - GET /api/v1/health

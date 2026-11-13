@@ -11,7 +11,8 @@ from .config import SITE_NAME, SITE_URL, MAX_TEXT_CHARS, RATE_LIMIT_PER_MIN
 from .database import Base, engine, get_db, SessionLocal
 from .models import Document, Category, Setting, SyncLog, AdminSession
 from .schemas import *
-from .auth import is_admin, create_session, login_ok, revoke
+from .auth import is_admin, create_session, login_ok, revoke, admin_enabled, verify_sync_secret
+from .crypto import encrypt, decrypt
 from .extraction import extract_text, ext_of, SUPPORTED
 from .drive import build_service, list_files_recursive, download_file
 from .search import keyword_search, tfidf_search, semantic_search
@@ -59,7 +60,7 @@ def rate_limit(request: Request):
 
 @app.middleware("http")
 async def rl_middleware(request: Request, call_next):
-    if request.url.path.startswith("/api/"):
+    if request.url.path.startswith("/api/") or request.url.path.startswith("/mcp"):
         try:
             rate_limit(request)
         except HTTPException as e:
@@ -70,21 +71,40 @@ async def rl_middleware(request: Request, call_next):
 def admin_token(request: Request) -> str:
     return request.cookies.get("admin_token", "")
 
+def csrf_ok(request: Request, provided: str) -> bool:
+    cookie = request.cookies.get("csrf_token", "")
+    if not cookie or not provided:
+        return False
+    return secrets.compare_digest(cookie, provided)
+
+def set_csrf_cookie(response):
+    if not response.headers.get("set-cookie", "").find("csrf_token") >= 0:
+        pass
+    # set if missing handled by caller
+    return response
+
 def require_admin(request: Request, db: Session = Depends(get_db)):
     if not is_admin(db, admin_token(request)):
         raise HTTPException(status_code=401, detail="Admin required")
     return True
 
+SENSITIVE_KEYS = {"google_refresh_token", "sync_secret"}
+
 def get_setting(db, key):
     s = db.query(Setting).filter(Setting.key==key).first()
-    return s.value if s else ""
+    if not s or not s.value:
+        return ""
+    if key in SENSITIVE_KEYS:
+        return decrypt(s.value)
+    return s.value
 
 def set_setting(db, key, value):
+    v = encrypt(value) if (key in SENSITIVE_KEYS and value) else value
     s = db.query(Setting).filter(Setting.key==key).first()
     if s:
-        s.value = value
+        s.value = v
     else:
-        db.add(Setting(key=key, value=value))
+        db.add(Setting(key=key, value=v))
     db.commit()
 
 def doc_to_out(d, include_text=False):
@@ -252,14 +272,16 @@ def api_download(doc_id: int, db: Session = Depends(get_db)):
             from fastapi.responses import Response
             return Response(content=data, media_type=d.mime_type or "application/octet-stream",
                            headers={"Content-Disposition": f'attachment; filename="{d.filename or d.title}"'})
-        except Exception as e:
-            raise HTTPException(500, f"download failed: {e}")
+        except Exception:
+            raise HTTPException(500, "Download failed")
     raise HTTPException(404, "original file not available")
 
 @app.get("/api/v1/search")
 def api_search(q: str = "", mode: str = "keyword", page: int = 1, page_size: int = 20, db: Session = Depends(get_db)):
     if not q:
         raise HTTPException(400, "q required")
+    if len(q) > 200:
+        raise HTTPException(400, "query too long")
     page_size = min(max(page_size,1),100)
     if mode == "semantic":
         docs = semantic_search(db, q, 200)
@@ -280,38 +302,67 @@ def export_metadata(db: Session = Depends(get_db)):
 # ---------- admin ----------
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request, db: Session = Depends(get_db)):
+    # ensure csrf cookie
+    resp = None
+    if not request.cookies.get("csrf_token"):
+        # will set below
+        pass
     if not is_admin(db, admin_token(request)):
-        return templates.TemplateResponse(request, "admin_login.html", {"site_name":SITE_NAME})
+        r = templates.TemplateResponse(request, "admin_login.html", {"site_name":SITE_NAME})
+        if not request.cookies.get("csrf_token"):
+            r.set_cookie("csrf_token", secrets.token_urlsafe(32), httponly=False, samesite="lax", secure=SITE_URL.startswith("https"))
+        return r
     docs = db.query(Document).order_by(Document.created_at.desc()).limit(200).all()
     cats = db.query(Category).all()
     logs = db.query(SyncLog).order_by(SyncLog.started_at.desc()).limit(10).all()
     folder = get_setting(db, "drive_folder_id")
     excluded = get_setting(db, "excluded_ids")
     refresh = get_setting(db, "google_refresh_token")
-    return templates.TemplateResponse(request, "admin.html", {"site_name":SITE_NAME,"docs":docs,"categories":cats,"logs":logs,"folder":folder,"excluded":excluded,"connected":bool(refresh)})
+    r = templates.TemplateResponse(request, "admin.html", {"site_name":SITE_NAME,"docs":docs,"categories":cats,"logs":logs,"folder":folder,"excluded":excluded,"connected":bool(refresh)})
+    if not request.cookies.get("csrf_token"):
+        r.set_cookie("csrf_token", secrets.token_urlsafe(32), httponly=False, samesite="lax", secure=SITE_URL.startswith("https"))
+    return r
 
 @app.post("/admin/login")
 def admin_login(request: Request, password: str = Form(...), db: Session = Depends(get_db)):
+    if not admin_enabled():
+        return templates.TemplateResponse(request, "admin_login.html", {"site_name":SITE_NAME,"error":"Admin not configured. Set a strong ADMIN_PASSWORD (min 12 chars)."})
     if not login_ok(password):
         return templates.TemplateResponse(request, "admin_login.html", {"site_name":SITE_NAME,"error":"Wrong password"})
     token = create_session(db)
     resp = RedirectResponse("/admin", status_code=303)
-    resp.set_cookie("admin_token", token, httponly=True, samesite="lax")
+    resp.set_cookie("admin_token", token, httponly=True, samesite="lax", secure=SITE_URL.startswith("https"))
+    if not request.cookies.get("csrf_token"):
+        resp.set_cookie("csrf_token", secrets.token_urlsafe(32), httponly=False, samesite="lax", secure=SITE_URL.startswith("https"))
     return resp
 
 @app.post("/admin/logout")
-def admin_logout(request: Request, db: Session = Depends(get_db)):
+def admin_logout(request: Request, csrf_token: str = Form(""), db: Session = Depends(get_db)):
+    if not csrf_ok(request, csrf_token):
+        raise HTTPException(403, "CSRF validation failed")
     revoke(db, admin_token(request))
     resp = RedirectResponse("/admin", status_code=303)
     resp.delete_cookie("admin_token")
     return resp
 
 @app.post("/admin/settings")
-def admin_settings(request: Request, folder_id: str = Form(""), excluded_ids: str = Form(""), db: Session = Depends(get_db)):
+def admin_settings(request: Request, folder_id: str = Form(""), excluded_ids: str = Form(""), csrf_token: str = Form(""), db: Session = Depends(get_db)):
     if not is_admin(db, admin_token(request)):
         raise HTTPException(401)
-    set_setting(db, "drive_folder_id", folder_id.strip())
-    set_setting(db, "excluded_ids", excluded_ids.strip())
+    if not csrf_ok(request, csrf_token):
+        raise HTTPException(403, "CSRF validation failed")
+    # validate folder id (alphanumeric, underscore, hyphen)
+    fid = folder_id.strip()
+    if fid and not all(c.isalnum() or c in "-_" for c in fid):
+        raise HTTPException(400, "Invalid folder id")
+    eids = excluded_ids.strip()
+    if eids:
+        for part in eids.split(","):
+            part = part.strip()
+            if part and not all(c.isalnum() or c in "-_" for c in part):
+                raise HTTPException(400, "Invalid excluded id")
+    set_setting(db, "drive_folder_id", fid)
+    set_setting(db, "excluded_ids", eids)
     return RedirectResponse("/admin", status_code=303)
 
 @app.get("/admin/google/connect")
@@ -355,17 +406,20 @@ def google_callback(request: Request, code: str = "", state: str = "", db: Sessi
     return RedirectResponse("/admin", status_code=303)
 
 @app.post("/admin/sync")
-def admin_sync(request: Request, db: Session = Depends(get_db)):
+def admin_sync(request: Request, csrf_token: str = Form(""), db: Session = Depends(get_db)):
     if not is_admin(db, admin_token(request)):
         raise HTTPException(401)
+    if not csrf_ok(request, csrf_token):
+        raise HTTPException(403, "CSRF validation failed")
     result = run_sync(db)
     return RedirectResponse("/admin", status_code=303)
 
 @app.post("/api/admin/sync")
-def api_sync(request: Request, secret: str = "", db: Session = Depends(get_db)):
-    # allow cron with admin secret via query ?secret=ADMIN_PASSWORD
-    if secret != os.getenv("ADMIN_PASSWORD","admin"):
-        # also allow cookie admin
+def api_sync(request: Request, db: Session = Depends(get_db)):
+    # Prefer secure header-based auth: X-Sync-Secret
+    provided = request.headers.get("x-sync-secret", "")
+    if not verify_sync_secret(provided):
+        # allow cookie admin as fallback
         if not is_admin(db, admin_token(request)):
             raise HTTPException(401)
     return run_sync(db)
@@ -464,9 +518,11 @@ def run_sync(db: Session) -> dict:
     return {"status":log.status,"added":added,"updated":updated,"deleted":deleted,"errors":errors}
 
 @app.post("/admin/documents/{doc_id}/toggle")
-def toggle_doc(request: Request, doc_id: int, db: Session = Depends(get_db)):
+def toggle_doc(request: Request, doc_id: int, csrf_token: str = Form(""), db: Session = Depends(get_db)):
     if not is_admin(db, admin_token(request)):
         raise HTTPException(401)
+    if not csrf_ok(request, csrf_token):
+        raise HTTPException(403, "CSRF validation failed")
     d = db.query(Document).filter(Document.id==doc_id).first()
     if d:
         d.is_public = not d.is_public
@@ -474,9 +530,11 @@ def toggle_doc(request: Request, doc_id: int, db: Session = Depends(get_db)):
     return RedirectResponse("/admin", status_code=303)
 
 @app.post("/admin/documents/{doc_id}/delete")
-def delete_doc(request: Request, doc_id: int, db: Session = Depends(get_db)):
+def delete_doc(request: Request, doc_id: int, csrf_token: str = Form(""), db: Session = Depends(get_db)):
     if not is_admin(db, admin_token(request)):
         raise HTTPException(401)
+    if not csrf_ok(request, csrf_token):
+        raise HTTPException(403, "CSRF validation failed")
     d = db.query(Document).filter(Document.id==doc_id).first()
     if d:
         d.is_deleted = True

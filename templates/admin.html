@@ -2,10 +2,11 @@
 {% block content %}
 <h1>Admin</h1>
 <p>Google Drive: {% if connected %}Connected{% else %}Not connected{% endif %}</p>
-<form method="post" action="/admin/logout"><button type="submit">Logout</button></form>
+<form method="post" action="/admin/logout"><input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}" /><button type="submit">Logout</button></form>
 
 <h2>Google Drive Settings</h2>
 <form method="post" action="/admin/settings">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}" />
   <label>Folder ID</label><br>
   <input type="text" name="folder_id" value="{{ folder }}" style="width:100%" />
   <label>Excluded file IDs (comma separated)</label><br>
@@ -14,7 +15,7 @@
 </form>
 <p>
   <a href="/admin/google/connect">Connect Google Drive</a> &middot;
-  <form method="post" action="/admin/sync" style="display:inline"><button type="submit">Sync Now</button></form>
+  <form method="post" action="/admin/sync" style="display:inline"><input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}" /><button type="submit">Sync Now</button></form>
 </p>
 
 <h2>Sync Logs</h2>
@@ -34,8 +35,8 @@
     <td>{{ d.text_status }}</td>
     <td>{{ d.is_public }}</td>
     <td>
-      <form method="post" action="/admin/documents/{{ d.id }}/toggle" style="display:inline"><button>Toggle</button></form>
-      <form method="post" action="/admin/documents/{{ d.id }}/delete" style="display:inline"><button>Delete</button></form>
+      <form method="post" action="/admin/documents/{{ d.id }}/toggle" style="display:inline"><input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}" /><button>Toggle</button></form>
+      <form method="post" action="/admin/documents/{{ d.id }}/delete" style="display:inline"><input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}" /><button>Delete</button></form>
     </td>
   </tr>
   {% endfor %}
