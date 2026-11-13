@@ -2,13 +2,17 @@ services:
   - type: web
     name: public-doclib
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
     envVars:
       - key: SECRET_KEY
         generateValue: true
       - key: ADMIN_PASSWORD
         sync: false
+      - key: SYNC_SECRET
+        generateValue: true
       - key: DATABASE_URL
         sync: false
       - key: SITE_URL
@@ -19,3 +23,5 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         sync: false
+      - key: PYTHON_VERSION
+        value: "3.11.11"
